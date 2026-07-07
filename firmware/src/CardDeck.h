@@ -33,6 +33,7 @@ public:
 
 private:
   bool isCardFile(const char *name) const;
+  bool inspectDeckFolder(const char *deckPath, bool *hasCover, size_t *cardCount) const;
   bool loadCardsForCurrentDeck();
 
   std::vector<String> deckNames_;

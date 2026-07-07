@@ -109,7 +109,11 @@ void drawRandomCard()
 {
   if (!decks.randomCardPath(imagePath, sizeof(imagePath)))
   {
-    showMessage("No cards in deck", decks.currentDeckName());
+    char detail[CardDeckManager::PATH_LEN];
+    snprintf(detail, sizeof(detail), "%s (%u cards)",
+             decks.currentDeckName(),
+             static_cast<unsigned>(decks.cardCount()));
+    showMessage("No cards in deck", detail);
     return;
   }
   showImage(imagePath);
@@ -118,10 +122,11 @@ void drawRandomCard()
 void showDeckStatus()
 {
   char line[CardDeckManager::PATH_LEN];
-  snprintf(line, sizeof(line), "Deck: %s (%u/%u)",
+  snprintf(line, sizeof(line), "Deck: %s (%u/%u, %u cards)",
            decks.currentDeckName(),
            static_cast<unsigned>(decks.currentDeckIndex() + 1),
-           static_cast<unsigned>(decks.deckCount()));
+           static_cast<unsigned>(decks.deckCount()),
+           static_cast<unsigned>(decks.cardCount()));
   showMessage(line, "Showing cover...");
   showCover();
 }
