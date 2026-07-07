@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xteink X4 カード生成</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f4f1ea;
+      --panel: #fffdf8;
+      --ink: #1d1d1d;
+      --accent: #2f5d50;
+      --line: #d8d0c4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+      background: linear-gradient(180deg, #efe8dc, var(--bg));
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+    h1 { margin: 0 0 8px; font-size: 1.8rem; }
+    p.lead { margin-top: 0; color: #555; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.05);
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin: 12px 0 6px;
+    }
+    input[type="text"], input[type="number"], textarea, select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font: inherit;
+      background: #fff;
+    }
+    textarea { min-height: 220px; resize: vertical; }
+    .row { display: flex; gap: 12px; }
+    .row > * { flex: 1; }
+    button {
+      margin-top: 16px;
+      width: 100%;
+      border: 0;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font: inherit;
+      font-weight: 700;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #5c6b64;
+      margin-top: 8px;
+    }
+    canvas {
+      width: 100%;
+      max-width: 360px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      display: block;
+      margin: 0 auto;
+    }
+    .hint { font-size: .9rem; color: #666; }
+    .status { margin-top: 12px; min-height: 1.4em; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Xteink X4 カード生成</h1>
+    <p class="lead">文字リストとフォントから 480×800 の枠付き 1-bit BMP をブラウザ上で作成します。</p>
+
+    <div class="grid">
+      <section class="panel">
+        <label for="deckName">デッキ名（SDカード上のフォルダ名）</label>
+        <input id="deckName" type="text" value="aaa" />
+
+        <label for="coverTitle">表紙タイトル</label>
+        <input id="coverTitle" type="text" value="CARD SHUFFLER" />
+
+        <label for="fontFile">フォント (TTF/OTF)</label>
+        <input id="fontFile" type="file" accept=".ttf,.otf,.woff,.woff2" />
+
+        <div class="row">
+          <div>
+            <label for="fontSize">フォントサイズ</label>
+            <input id="fontSize" type="number" value="42" min="12" max="120" />
+          </div>
+          <div>
+            <label for="previewIndex">プレビュー</label>
+            <select id="previewIndex"></select>
+          </div>
+        </div>
+
+        <label for="cardLines">カード文言（1行1枚、# でコメント）</label>
+        <textarea id="cardLines">大吉
+中吉
+小吉
+末吉
+凶</textarea>
+
+        <button id="generateBtn">ZIPをダウンロード (cover + 000.bmp...)</button>
+        <button id="previewBtn" class="secondary">プレビュー更新</button>
+        <div class="status" id="status"></div>
+        <p class="hint">SDカード構成: /aaa/cover.bmp, /aaa/000.bmp ...</p>
+      </section>
+
+      <section class="panel">
+        <h2 style="margin-top:0">プレビュー</h2>
+        <canvas id="preview" width="480" height="800"></canvas>
+      </section>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script>
+    const WIDTH = 480;
+    const HEIGHT = 800;
+    const MARGIN = 36;
+    const FRAME = 6;
+
+    const deckNameEl = document.getElementById('deckName');
+    const coverTitleEl = document.getElementById('coverTitle');
+    const fontFileEl = document.getElementById('fontFile');
+    const fontSizeEl = document.getElementById('fontSize');
+    const cardLinesEl = document.getElementById('cardLines');
+    const previewIndexEl = document.getElementById('previewIndex');
+    const previewCanvas = document.getElementById('preview');
+    const statusEl = document.getElementById('status');
+
+    let loadedFontFamily = null;
+    let loadedFontUrl = null;
+
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+    }
+
+    function parseLines(text) {
+      return text.split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'));
+    }
+
+    function refreshPreviewOptions(lines) {
+      const current = previewIndexEl.value;
+      previewIndexEl.innerHTML = '';
+      const coverOpt = document.createElement('option');
+      coverOpt.value = 'cover';
+      coverOpt.textContent = 'cover.bmp';
+      previewIndexEl.appendChild(coverOpt);
+      lines.forEach((line, i) => {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = `${String(i).padStart(3, '0')}.bmp — ${line.slice(0, 18)}`;
+        previewIndexEl.appendChild(opt);
+      });
+      if ([...previewIndexEl.options].some((o) => o.value === current)) {
+        previewIndexEl.value = current;
+      }
+    }
+
+    async function ensureFont() {
+      const file = fontFileEl.files?.[0];
+      if (!file) {
+        loadedFontFamily = null;
+        return null;
+      }
+      if (loadedFontUrl) URL.revokeObjectURL(loadedFontUrl);
+      loadedFontUrl = URL.createObjectURL(file);
+      loadedFontFamily = `DeckFont_${Date.now()}`;
+      const fontFace = new FontFace(loadedFontFamily, `url(${loadedFontUrl})`);
+      await fontFace.load();
+      document.fonts.add(fontFace);
+      return loadedFontFamily;
+    }
+
+    function wrapText(ctx, text, maxWidth) {
+      const words = text.replace(/\n/g, ' ').split(/\s+/).filter(Boolean);
+      if (!words.length) return [''];
+      const lines = [];
+      let current = words[0];
+      for (let i = 1; i < words.length; i += 1) {
+        const probe = `${current} ${words[i]}`;
+        if (ctx.measureText(probe).width <= maxWidth) current = probe;
+        else {
+          lines.push(current);
+          current = words[i];
+        }
+      }
+      lines.push(current);
+      return lines;
+    }
+
+    function drawCard(ctx, text, options = {}) {
+      const fontSize = Number(fontSizeEl.value) || 42;
+      const family = options.fontFamily || 'sans-serif';
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+      const innerLeft = MARGIN;
+      const innerTop = MARGIN;
+      const innerRight = WIDTH - MARGIN;
+      const innerBottom = HEIGHT - MARGIN;
+
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1;
+      for (let offset = 0; offset < FRAME; offset += 1) {
+        ctx.strokeRect(
+          innerLeft + offset,
+          innerTop + offset,
+          innerRight - innerLeft - offset * 2,
+          innerBottom - innerTop - offset * 2,
+        );
+      }
+
+      const contentLeft = innerLeft + FRAME + 20;
+      const contentRight = innerRight - FRAME - 20;
+      const contentWidth = contentRight - contentLeft;
+
+      let y = innerTop + FRAME + 28;
+      if (options.title) {
+        const titleSize = Math.max(28, Math.floor(fontSize * 0.9));
+        ctx.font = `${titleSize}px ${family}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = '#000';
+        ctx.fillText(options.title, WIDTH / 2, y);
+        y += titleSize * 1.8;
+      }
+
+      ctx.font = `${fontSize}px ${family}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#000';
+
+      let lines = wrapText(ctx, text, contentWidth);
+      if (lines.length > 8) lines = [...lines.slice(0, 7), '…'];
+
+      const lineHeight = fontSize * 1.45;
+      const startY = (HEIGHT - lines.length * lineHeight) / 2 + lineHeight / 2;
+      lines.forEach((line, i) => {
+        ctx.fillText(line, WIDTH / 2, startY + i * lineHeight);
+      });
+    }
+
+    function canvasToMonoBmp(canvas) {
+      const ctx = canvas.getContext('2d');
+      const { width, height } = canvas;
+      const image = ctx.getImageData(0, 0, width, height).data;
+      const rowBytes = Math.ceil(width / 8);
+      const paddedRowBytes = (rowBytes + 3) & ~3;
+      const pixelDataSize = paddedRowBytes * height;
+      const fileSize = 62 + pixelDataSize;
+      const buffer = new ArrayBuffer(fileSize);
+      const view = new DataView(buffer);
+      let offset = 0;
+
+      const write16 = (v) => { view.setUint16(offset, v, true); offset += 2; };
+      const write32 = (v) => { view.setUint32(offset, v, true); offset += 4; };
+
+      write16(0x4D42);
+      write32(fileSize);
+      write32(0);
+      write32(62);
+      write32(40);
+      write32(width);
+      write32(height);
+      write16(1);
+      write16(1);
+      write32(0);
+      write32(pixelDataSize);
+      write32(0);
+      write32(0);
+      write32(2);
+      write32(0);
+      view.setUint32(offset, 0x000000, true); offset += 4;
+      view.setUint32(offset, 0xFFFFFF, true); offset += 4;
+
+      for (let row = height - 1; row >= 0; row -= 1) {
+        const rowStart = offset;
+        let byte = 0;
+        let bit = 7;
+        for (let col = 0; col < width; col += 1) {
+          const idx = (row * width + col) * 4;
+          const lum = image[idx] * 0.299 + image[idx + 1] * 0.587 + image[idx + 2] * 0.114;
+          const black = lum < 200;
+          if (black) byte |= (1 << bit);
+          bit -= 1;
+          if (bit < 0) {
+            view.setUint8(offset, byte);
+            offset += 1;
+            byte = 0;
+            bit = 7;
+          }
+        }
+        if (bit !== 7) {
+          view.setUint8(offset, byte);
+          offset += 1;
+        }
+        while ((offset - rowStart) < paddedRowBytes) {
+          view.setUint8(offset, 0);
+          offset += 1;
+        }
+      }
+
+      return buffer;
+    }
+
+    async function renderPreview() {
+      const lines = parseLines(cardLinesEl.value);
+      refreshPreviewOptions(lines);
+      const fontFamily = await ensureFont();
+      const ctx = previewCanvas.getContext('2d');
+      const selected = previewIndexEl.value;
+      if (selected === 'cover') {
+        drawCard(ctx, coverTitleEl.value, { fontFamily, title: null });
+      } else {
+        const index = Number(selected);
+        drawCard(ctx, lines[index] || '', { fontFamily });
+      }
+    }
+
+    async function generateZip() {
+      const lines = parseLines(cardLinesEl.value);
+      if (!lines.length) {
+        setStatus('カード文言を1行以上入力してください');
+        return;
+      }
+
+      const fontFamily = await ensureFont();
+      const offscreen = document.createElement('canvas');
+      offscreen.width = WIDTH;
+      offscreen.height = HEIGHT;
+      const ctx = offscreen.getContext('2d');
+
+      const zip = new JSZip();
+      const folderName = (deckNameEl.value || 'aaa').replace(/[\\/:*?"<>|]/g, '_');
+      const folder = zip.folder(folderName);
+
+      drawCard(ctx, coverTitleEl.value, { fontFamily, title: null });
+      folder.file('cover.bmp', canvasToMonoBmp(offscreen));
+
+      lines.forEach((line, index) => {
+        drawCard(ctx, line, { fontFamily });
+        const name = `${String(index).padStart(3, '0')}.bmp`;
+        folder.file(name, canvasToMonoBmp(offscreen));
+      });
+
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${folderName}-deck.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus(`${folderName}/cover.bmp と ${lines.length} 枚を ZIP 化しました`);
+    }
+
+    cardLinesEl.addEventListener('input', () => refreshPreviewOptions(parseLines(cardLinesEl.value)));
+    previewIndexEl.addEventListener('change', renderPreview);
+    fontFileEl.addEventListener('change', renderPreview);
+    fontSizeEl.addEventListener('change', renderPreview);
+    document.getElementById('previewBtn').addEventListener('click', renderPreview);
+    document.getElementById('generateBtn').addEventListener('click', generateZip);
+
+    refreshPreviewOptions(parseLines(cardLinesEl.value));
+    renderPreview();
+  </script>
+</body>
+</html>
