@@ -27,21 +27,23 @@ def load_font(font_path: str | None, size: int) -> ImageFont.FreeTypeFont | Imag
 
 
 def wrap_text(text: str, font: ImageFont.ImageFont, max_width: int) -> list[str]:
-    words = text.replace("\n", " ").split()
-    if not words:
-        return [""]
-
     lines: list[str] = []
-    current = words[0]
-    for word in words[1:]:
-        probe = f"{current} {word}"
-        if font.getlength(probe) <= max_width:
-            current = probe
-        else:
+    for paragraph in text.split("\n"):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        current = ""
+        for ch in paragraph:
+            probe = f"{current}{ch}"
+            if font.getlength(probe) <= max_width:
+                current = probe
+            else:
+                if current:
+                    lines.append(current)
+                current = ch
+        if current:
             lines.append(current)
-            current = word
-    lines.append(current)
-    return lines
+    return lines or [""]
 
 
 def draw_card(text: str, font: ImageFont.ImageFont, title: str | None = None) -> Image.Image:

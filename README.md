@@ -55,6 +55,26 @@ pio run
 
 ## カード画像の作り方
 
+### ブラウザ（おすすめ）
+
+**インストール不要**で使えます。
+
+1. リポジトリの GitHub Pages を開く（main マージ後）:
+   **https://kinakobooster.github.io/Xteink-shuffler/**
+2. カード文言を入力、または `.txt` をドラッグ＆ドロップ
+3. フォント（TTF/OTF）を選ぶ
+4. プレビューで確認 → **ZIPをダウンロード**
+5. ZIP を解凍して SD カードの `/aaa/` などにコピー
+
+ローカルで開く場合:
+
+```bash
+cd web && python3 -m http.server 8080
+# http://localhost:8080 を開く
+```
+
+> `file://` で直接開くとフォント読み込みが制限されるブラウザがあります。HTTP 経由を推奨します。
+
 ### シェルコマンド（PC）
 
 ```bash
@@ -62,28 +82,12 @@ chmod +x tools/generate-cards.sh
 ./tools/generate-cards.sh examples/cards.txt ./sd/aaa --font /path/to/font.ttf
 ```
 
-生成物を SD カードの `/aaa/` にコピーします。
+生成した `aaa/` フォルダを SD カードルートへコピーします。
 
-オプション:
+### シェルコマンド（オフライン / 自動化向け）
 
 - `--font-size 42` フォントサイズ
 - `--cover-title "おみくじ"` 表紙タイトル
-
-### ブラウザ上で作成
-
-`web/index.html` をブラウザで開きます。
-
-1. カード文言を入力（1行1枚）
-2. フォント（TTF/OTF）を選択
-3. プレビューで確認
-4. **ZIPをダウンロード** → 解凍して SD カードへコピー
-
-ローカルサーバーで開く例:
-
-```bash
-cd web && python3 -m http.server 8080
-# http://localhost:8080 を開く
-```
 
 ## ボタン配置（X4）
 
