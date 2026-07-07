@@ -22,6 +22,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Build firmware
+        run: |
+          pip install platformio
+          cd firmware
+          pio run
+          mkdir -p ../web/firmware
+          cp .pio/build/esp32-c3-devkitm-1/firmware.bin ../web/firmware/firmware.bin
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

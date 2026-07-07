@@ -126,15 +126,76 @@
       color: var(--ink);
     }
     a { color: var(--accent); }
+    .firmware-panel { margin-top: 20px; }
+    .flash-guide {
+      background: #faf8f4;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: .92rem;
+      line-height: 1.65;
+      margin-top: 12px;
+    }
+    .flash-guide ol { margin: 8px 0 0; padding-left: 1.2rem; }
+    .flash-guide li { margin-bottom: 6px; }
+    .flash-guide .warn {
+      color: #8a3b12;
+      font-weight: 600;
+      margin: 0 0 8px;
+    }
+    .btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 700px) {
+      .btn-row { grid-template-columns: 1fr; }
+    }
+    .btn-row button, .btn-row a.file-btn { margin-top: 0; }
+    .ext-link {
+      display: inline-block;
+      margin-top: 10px;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
   <main>
-    <h1>Xteink X4 カード生成</h1>
+    <h1>Xteink X4 Card Shuffler</h1>
     <p class="lead">
-      インストール不要。ブラウザだけで 480×800 の枠付き 1-bit BMP デッキを作れます。
-      作った ZIP を SD カードに入れて、X4 でカードを引いてください。
+      ブラウザだけでカスタムファームのダウンロードと、480×800 の枠付き BMP デッキ作成ができます。
+      ファームを書き込み → SD にカードを入れる → 引く、まで一通りここから。
     </p>
+
+    <section class="panel firmware-panel">
+      <h2>ファームウェア書き込み</h2>
+      <p class="hint">
+        初回のみ必要です。カード引きマシン用ファームを X4 に書き込みます。
+      </p>
+
+      <div class="flash-guide">
+        <p class="warn">⚠ 書き込み前に公式ファームウェアのバックアップを推奨します</p>
+        <ol>
+          <li>X4 を <strong>データ対応 USB-C</strong> で PC に接続し、電源を入れる</li>
+          <li>下のボタンで <strong>ファーム ZIP</strong> をダウンロード（<code>firmware.bin</code> + <code>書き方.txt</code>）</li>
+          <li>
+            <a href="https://xteink.dve.al/" target="_blank" rel="noopener">xteink.dve.al</a>
+            を開き <strong>Connect</strong> → ポート選択
+          </li>
+          <li>ZIP 内の <code>firmware.bin</code> をアップロードして <strong>Flash</strong></li>
+          <li>完了後、microSD にデッキフォルダを入れて再起動</li>
+        </ol>
+        <a class="ext-link" href="https://xteink.dve.al/" target="_blank" rel="noopener">→ Web フラッシャーを開く（xteink.dve.al）</a>
+      </div>
+
+      <div class="btn-row" style="margin-top:16px">
+        <button id="firmwareZipBtn" type="button">ファームウェア ZIP をダウンロード</button>
+        <a class="file-btn secondary" id="firmwareBinLink" href="firmware/firmware.bin" download="firmware.bin">firmware.bin だけ取得</a>
+      </div>
+      <div class="status" id="firmwareStatus"></div>
+    </section>
+
+    <h2 style="margin:28px 0 12px">カードデッキ作成</h2>
 
     <div class="steps">
       <div class="step"><strong>1.</strong> 文言リストとフォントを読み込む</div>
@@ -186,10 +247,7 @@
         <p class="hint">
           SDカード構成例:<br>
           <code>/aaa/cover.bmp</code><br>
-          <code>/aaa/000.bmp</code> …<br><br>
-          ファーム書き込みは
-          <a href="https://xteink.dve.al/" target="_blank" rel="noopener">xteink.dve.al</a>
-          から <code>firmware.bin</code> をフラッシュ
+          <code>/aaa/000.bmp</code> …
         </p>
       </section>
 
@@ -220,12 +278,18 @@
     const fontDropEl = document.getElementById('fontDrop');
     const textDropEl = document.getElementById('textDrop');
     const generateBtn = document.getElementById('generateBtn');
+    const firmwareZipBtn = document.getElementById('firmwareZipBtn');
+    const firmwareStatusEl = document.getElementById('firmwareStatus');
 
     let loadedFontFamily = null;
     let loadedFontUrl = null;
 
     function setStatus(msg) {
       statusEl.textContent = msg;
+    }
+
+    function setFirmwareStatus(msg) {
+      firmwareStatusEl.textContent = msg;
     }
 
     function parseLines(text) {
@@ -457,6 +521,45 @@
       }
     }
 
+    async function downloadFirmwareZip() {
+      firmwareZipBtn.disabled = true;
+      setFirmwareStatus('ファームウェアを取得中...');
+
+      try {
+        const [binRes, guideRes] = await Promise.all([
+          fetch('firmware/firmware.bin'),
+          fetch('firmware/書き方.txt'),
+        ]);
+
+        if (!binRes.ok) {
+          throw new Error('firmware.bin が見つかりません');
+        }
+
+        const bin = await binRes.arrayBuffer();
+        const guide = guideRes.ok
+          ? await guideRes.text()
+          : 'firmware.bin を xteink.dve.al から 0x10000 に書き込んでください。';
+
+        const zip = new JSZip();
+        zip.file('firmware.bin', bin);
+        zip.file('書き方.txt', guide);
+
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'xteink-shuffler-firmware.zip';
+        a.click();
+        URL.revokeObjectURL(url);
+        setFirmwareStatus('xteink-shuffler-firmware.zip をダウンロードしました');
+      } catch (err) {
+        console.error(err);
+        setFirmwareStatus('取得失敗: GitHub Pages 版を使うか、firmware/ を配置してください');
+      } finally {
+        firmwareZipBtn.disabled = false;
+      }
+    }
+
     async function loadTextFile(file) {
       const text = await file.text();
       cardLinesEl.value = text;
@@ -496,6 +599,7 @@
     coverTitleEl.addEventListener('input', renderPreview);
     document.getElementById('previewBtn').addEventListener('click', renderPreview);
     document.getElementById('generateBtn').addEventListener('click', generateZip);
+    firmwareZipBtn.addEventListener('click', downloadFirmwareZip);
 
     bindDropzone(textDropEl, (file) => loadTextFile(file));
     bindDropzone(fontDropEl, (file) => {
