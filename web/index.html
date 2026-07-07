@@ -440,7 +440,7 @@
           const idx = (row * width + col) * 4;
           const lum = image[idx] * 0.299 + image[idx + 1] * 0.587 + image[idx + 2] * 0.114;
           const black = lum < 200;
-          if (black) byte |= (1 << bit);
+          if (!black) byte |= (1 << bit);
           bit -= 1;
           if (bit < 0) {
             view.setUint8(offset, byte);
