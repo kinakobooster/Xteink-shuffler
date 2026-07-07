@@ -40,6 +40,11 @@ Xteink X4 — Card Shuffler ファームウェア書き込み手順
 
   カード画像は同梱の Web ツール（index.html）から ZIP 生成できます。
 
+  【ZIP の入れ方】
+  - ZIP を解凍し、aaa フォルダごと SD カードのルートへコピー
+  - __MACOSX フォルダがあれば削除
+  - 正しい構成: /aaa/cover.bmp, /aaa/000.bmp ...
+
 
 ■ 操作（ファーム書き込み後）
 
