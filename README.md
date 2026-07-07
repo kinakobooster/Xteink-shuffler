@@ -61,10 +61,11 @@ pio run
 
 1. リポジトリの GitHub Pages を開く（main マージ後）:
    **https://kinakobooster.github.io/Xteink-shuffler/**
-2. カード文言を入力、または `.txt` をドラッグ＆ドロップ
-3. フォント（TTF/OTF）を選ぶ
-4. プレビューで確認 → **ZIPをダウンロード**
-5. ZIP を解凍して SD カードの `/aaa/` などにコピー
+2. **ファームウェア ZIP をダウンロード** → [xteink.dve.al](https://xteink.dve.al/) から書き込み（ページ内に手順あり）
+3. カード文言を入力、または `.txt` をドラッグ＆ドロップ
+4. フォント（TTF/OTF）を選ぶ
+5. プレビューで確認 → **デッキ ZIP をダウンロード**
+6. ZIP を解凍して SD カードの `/aaa/` などにコピー
 
 ローカルで開く場合:
 

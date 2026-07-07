@@ -1,0 +1,66 @@
+Xteink X4 — Card Shuffler ファームウェア書き込み手順
+============================================
+
+【重要】元の公式ファームウェアに戻す前に、必ずバックアップを取ってください。
+
+
+■ 用意するもの
+  - Xteink X4 本体
+  - データ転送対応の USB-C ケーブル（充電専用ケーブル不可）
+  - Chrome または Edge ブラウザ（PC）
+
+
+■ 手順
+
+1. X4 を USB-C で PC に接続し、電源を入れる
+
+2. ブラウザで Web フラッシャーを開く
+   https://xteink.dve.al/
+
+3. 「Connect」ボタンを押し、表示されるシリアルポート（USB Serial など）を選択
+
+4. この ZIP 内の firmware.bin を選択してアップロード
+   （ドラッグ＆ドロップでも可）
+
+5. フラッシュ設定（通常はそのままで OK）
+   - Chip: ESP32-C3
+   - Flash offset: 0x10000（app0）
+
+6. 「Flash」または「Program」を実行し、完了まで待つ（1〜2分）
+
+7. 完了後、X4 が再起動する。microSD にデッキフォルダを入れて使う
+
+
+■ SD カードの準備（書き込み後）
+
+  /aaa/cover.bmp    … 表紙
+  /aaa/000.bmp      … カード
+  /aaa/001.bmp
+  ...
+
+  カード画像は同梱の Web ツール（index.html）から ZIP 生成できます。
+
+
+■ 操作（ファーム書き込み後）
+
+  Back（ボタン1）           … 表紙 cover.bmp を表示
+  Confirm / Left / Right    … ランダムにカードを1枚表示
+  Up / Down                 … デッキ（フォルダ）切替
+  電源ボタン長押し（1秒）   … スリープ
+
+
+■ トラブルシューティング
+
+  - ポートが出ない → ケーブル交換、別 USB ポート、X4 の電源確認
+  - 書き込み失敗   → ケーブルを抜き差しして再接続
+  - 画面が真っ白   → SD カードを挿し、/aaa/cover.bmp があるか確認
+  - 元に戻したい   → 事前にバックアップした公式ファームを同じ手順で書き込む
+
+
+■ コマンドラインで書き込む場合（上級者向け）
+
+  pip install esptool
+  esptool.py --chip esp32c3 --port /dev/ttyUSB0 write_flash 0x10000 firmware.bin
+
+  Windows のポート例: COM3
+  macOS のポート例: /dev/cu.usbmodem*
