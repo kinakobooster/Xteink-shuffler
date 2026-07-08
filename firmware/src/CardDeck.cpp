@@ -363,3 +363,46 @@ bool CardDeckManager::randomCardPath(char *out, size_t outLen) const
   snprintf(out, outLen, "/%s/%s", deckNames_[currentDeck_].c_str(), cardFiles_[index].c_str());
   return true;
 }
+
+bool CardDeckManager::randomCardPaths(char paths[][PATH_LEN], size_t pathLen, size_t count) const
+{
+  if (!paths || pathLen == 0 || count == 0 || cardFiles_.empty() || deckNames_.empty())
+  {
+    return false;
+  }
+
+  const size_t available = cardFiles_.size();
+  const size_t pickCount = count < available ? count : available;
+
+  size_t indices[MAX_CARDS];
+  for (size_t i = 0; i < available; i++)
+  {
+    indices[i] = i;
+  }
+
+  for (size_t i = 0; i < pickCount; i++)
+  {
+    const size_t j = i + static_cast<size_t>(random(available - i));
+    const size_t tmp = indices[i];
+    indices[i] = indices[j];
+    indices[j] = tmp;
+  }
+
+  for (size_t i = 0; i < count; i++)
+  {
+    if (i < pickCount)
+    {
+      snprintf(paths[i], pathLen, "/%s/%s",
+               deckNames_[currentDeck_].c_str(),
+               cardFiles_[indices[i]].c_str());
+    }
+    else
+    {
+      snprintf(paths[i], pathLen, "/%s/%s",
+               deckNames_[currentDeck_].c_str(),
+               cardFiles_[indices[0]].c_str());
+    }
+  }
+
+  return true;
+}
