@@ -19,6 +19,58 @@ uint8_t physicalRows[PHYS_HEIGHT][PHYS_ROW_BYTES];
 uint8_t colorRow[PHYS_ROW_BYTES];
 bool rowBlack[MAX_BMP_WIDTH];
 
+struct Rect
+{
+  int16_t x;
+  int16_t y;
+  int16_t w;
+  int16_t h;
+};
+
+void computeAspectFitSize(int16_t srcW, int16_t srcH, int16_t maxW, int16_t maxH, int16_t &outW, int16_t &outH)
+{
+  if (srcW <= 0 || srcH <= 0 || maxW <= 0 || maxH <= 0)
+  {
+    outW = 0;
+    outH = 0;
+    return;
+  }
+
+  if (static_cast<int32_t>(maxW) * srcH <= static_cast<int32_t>(maxH) * srcW)
+  {
+    outW = maxW;
+    outH = static_cast<int16_t>((static_cast<int32_t>(maxW) * srcH) / srcW);
+  }
+  else
+  {
+    outH = maxH;
+    outW = static_cast<int16_t>((static_cast<int32_t>(maxH) * srcW) / srcH);
+  }
+}
+
+void computeTriangleLayout(int16_t screenW, int16_t screenH, int16_t srcW, int16_t srcH, Rect out[3])
+{
+  constexpr int16_t MARGIN = 8;
+  constexpr int16_t GAP = 10;
+  constexpr int16_t ROW_GAP = 14;
+
+  const int16_t bottomMaxW = (screenW - 2 * MARGIN - GAP) / 2;
+  const int16_t totalMaxH = screenH - 2 * MARGIN - ROW_GAP;
+  const int16_t rowMaxH = totalMaxH / 2;
+
+  int16_t cardW = 0;
+  int16_t cardH = 0;
+  computeAspectFitSize(srcW, srcH, bottomMaxW, rowMaxH, cardW, cardH);
+
+  const int16_t topX = (screenW - cardW) / 2;
+  const int16_t topY = MARGIN;
+  const int16_t bottomY = screenH - MARGIN - cardH;
+
+  out[0] = {topX, topY, cardW, cardH};
+  out[1] = {MARGIN, bottomY, cardW, cardH};
+  out[2] = {static_cast<int16_t>(MARGIN + cardW + GAP), bottomY, cardW, cardH};
+}
+
 struct BmpInfo
 {
   uint32_t imageOffset = 0;
@@ -360,8 +412,16 @@ bool drawBitmapFromSD(ShufflerDisplay &display, const char *path, int16_t x, int
   (void)y;
 
   clearPhysicalRows();
-  const bool ok = drawBitmapScaledFromSD(display, path, 0, 0, display.width(), display.height(),
-                                       display.width(), display.height());
+
+  const int16_t screenW = display.width();
+  const int16_t screenH = display.height();
+  int16_t fitW = 0;
+  int16_t fitH = 0;
+  computeAspectFitSize(screenW, screenH, screenW, screenH, fitW, fitH);
+  const int16_t fitX = (screenW - fitW) / 2;
+  const int16_t fitY = (screenH - fitH) / 2;
+
+  const bool ok = drawBitmapScaledFromSD(display, path, fitX, fitY, fitW, fitH, screenW, screenH);
   if (!ok)
   {
     return false;
@@ -376,23 +436,22 @@ bool drawThreeBitmapsFromSD(ShufflerDisplay &display, const char *paths[3])
 {
   const int16_t screenW = display.width();
   const int16_t screenH = display.height();
-  const int16_t slotW = screenW / 3;
-  const int16_t slotH = screenH;
+  Rect slots[3];
+  computeTriangleLayout(screenW, screenH, screenW, screenH, slots);
 
   clearPhysicalRows();
 
   for (int i = 0; i < 3; i++)
   {
-    const int16_t slotGx = static_cast<int16_t>(i * slotW);
-    if (!drawBitmapScaledFromSD(display, paths[i], slotGx, 0, slotW, slotH,
-                                display.width(), display.height()))
+    if (!drawBitmapScaledFromSD(display, paths[i], slots[i].x, slots[i].y, slots[i].w, slots[i].h,
+                                screenW, screenH))
     {
       Serial.printf("Triple draw failed at slot %d: %s\n", i, paths[i]);
       return false;
     }
   }
 
-  Serial.printf("BMP triple: %s | %s | %s\n", paths[0], paths[1], paths[2]);
+  Serial.printf("BMP triple (triangle): %s | %s | %s\n", paths[0], paths[1], paths[2]);
   flushPhysicalDisplay(display);
   return true;
 }
