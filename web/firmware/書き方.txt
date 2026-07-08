@@ -49,7 +49,8 @@ Xteink X4 — Card Shuffler ファームウェア書き込み手順
 ■ 操作（ファーム書き込み後）
 
   Back（ボタン1）           … 表紙 cover.bmp を表示
-  Confirm / Left / Right    … ランダムにカードを1枚表示
+  Confirm（ボタン2）        … ランダム3枚を横並びで表示
+  Left / Right（ボタン3〜4）… ランダムにカードを1枚表示
   Up / Down                 … デッキ（フォルダ）切替
   電源ボタン長押し（1秒）   … スリープ
 

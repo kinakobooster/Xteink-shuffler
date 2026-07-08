@@ -119,6 +119,26 @@ void drawRandomCard()
   showImage(imagePath);
 }
 
+void drawThreeRandomCards()
+{
+  char paths[3][CardDeckManager::PATH_LEN];
+  if (!decks.randomCardPaths(paths, CardDeckManager::PATH_LEN, 3))
+  {
+    char detail[CardDeckManager::PATH_LEN];
+    snprintf(detail, sizeof(detail), "%s (%u cards)",
+             decks.currentDeckName(),
+             static_cast<unsigned>(decks.cardCount()));
+    showMessage("Need 1+ cards", detail);
+    return;
+  }
+
+  const char *ptrs[3] = {paths[0], paths[1], paths[2]};
+  if (!drawThreeBitmapsFromSD(display, ptrs))
+  {
+    showMessage("Failed to draw 3", paths[0]);
+  }
+}
+
 void showDeckStatus()
 {
   char line[CardDeckManager::PATH_LEN];
@@ -208,6 +228,8 @@ void loop()
     showCover();
     break;
   case BTN_CONFIRM:
+    drawThreeRandomCards();
+    break;
   case BTN_LEFT:
   case BTN_RIGHT:
     drawRandomCard();

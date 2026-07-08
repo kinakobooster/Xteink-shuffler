@@ -30,6 +30,7 @@ public:
 
   bool coverPath(char *out, size_t outLen) const;
   bool randomCardPath(char *out, size_t outLen) const;
+  bool randomCardPaths(char paths[][PATH_LEN], size_t pathLen, size_t count) const;
 
 private:
   bool isCardFile(const char *name) const;
