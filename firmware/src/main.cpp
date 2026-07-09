@@ -94,10 +94,15 @@ void showMessage(const char *line1, const char *line2 = nullptr)
   } while (display.nextPage());
 }
 
-bool showImage(const char *path, bool preferPartial)
+bool randomCardInverted()
 {
-  Serial.printf("Show: %s\n", path);
-  if (drawBitmapFromSD(display, path, preferPartial, false))
+  return random(2) == 0;
+}
+
+bool showImage(const char *path, bool preferPartial, bool flipVertical = false)
+{
+  Serial.printf("Show: %s%s\n", path, flipVertical ? " (inverted)" : "");
+  if (drawBitmapFromSD(display, path, preferPartial, false, flipVertical))
   {
     return true;
   }
@@ -136,7 +141,7 @@ void drawRandomCard()
     showMessage("No cards in deck", detail);
     return;
   }
-  showImage(imagePath, true);
+  showImage(imagePath, true, randomCardInverted());
 }
 
 void drawThreeRandomCards()
@@ -153,7 +158,8 @@ void drawThreeRandomCards()
   }
 
   const char *ptrs[3] = {paths[0], paths[1], paths[2]};
-  if (!drawThreeBitmapsFromSD(display, ptrs, true))
+  const bool flips[3] = {randomCardInverted(), randomCardInverted(), randomCardInverted()};
+  if (!drawThreeBitmapsFromSD(display, ptrs, true, flips))
   {
     showMessage("Failed to draw 3", paths[0]);
   }
