@@ -25,6 +25,17 @@ constexpr int SD_MISO = 7;
 
 constexpr int PIN_POWER = 3;
 constexpr unsigned long POWER_SLEEP_MS = 1000;
+constexpr unsigned long DECK_PICKER_DWELL_MS = 400;
+
+enum class AppMode : uint8_t
+{
+  Normal,
+  DeckPicker,
+};
+
+AppMode appMode = AppMode::Normal;
+size_t pickerIndex = 0;
+unsigned long pickerMovedAt = 0;
 
 GxEPD2_BW<GxEPD2_426_GDEQ0426T82, GxEPD2_426_GDEQ0426T82::HEIGHT> display(
     GxEPD2_426_GDEQ0426T82(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
@@ -148,31 +159,160 @@ void drawThreeRandomCards()
   }
 }
 
-void handleDeckChange(bool next)
+void showDeckPicker(size_t highlightIndex)
 {
-  if (decks.deckCount() == 0)
+  const size_t deckCount = decks.deckCount();
+  if (deckCount == 0)
+  {
+    return;
+  }
+
+  constexpr int16_t LINE_H = 38;
+  constexpr size_t VISIBLE_LINES = 7;
+  constexpr int16_t MARGIN_X = 20;
+  constexpr int16_t PANEL_X = 12;
+  constexpr int16_t TITLE_Y = 56;
+  constexpr int16_t LIST_Y = 96;
+
+  size_t scrollStart = 0;
+  if (deckCount > VISIBLE_LINES)
+  {
+    if (highlightIndex >= VISIBLE_LINES / 2)
+    {
+      scrollStart = highlightIndex - (VISIBLE_LINES / 2);
+    }
+    if (scrollStart + VISIBLE_LINES > deckCount)
+    {
+      scrollStart = deckCount - VISIBLE_LINES;
+    }
+  }
+
+  const int16_t panelW = display.width() - 2 * PANEL_X;
+  const int16_t panelH = static_cast<int16_t>(LIST_Y - 20 + VISIBLE_LINES * LINE_H + 16);
+
+  display.setFullWindow();
+  display.firstPage();
+  do
+  {
+    display.fillScreen(GxEPD_WHITE);
+    display.drawRect(PANEL_X, 16, panelW, panelH, GxEPD_BLACK);
+    display.setFont(&FreeMonoBold12pt7b);
+    display.setTextColor(GxEPD_BLACK);
+    display.setCursor(MARGIN_X, TITLE_Y);
+    display.print("Deck");
+
+    for (size_t row = 0; row < VISIBLE_LINES && scrollStart + row < deckCount; row++)
+    {
+      const size_t idx = scrollStart + row;
+      const int16_t y = static_cast<int16_t>(LIST_Y + row * LINE_H);
+      const bool selected = idx == highlightIndex;
+
+      if (selected)
+      {
+        display.fillRect(MARGIN_X - 4, y - 28, panelW - 16, LINE_H - 4, GxEPD_BLACK);
+        display.setTextColor(GxEPD_WHITE);
+      }
+      else
+      {
+        display.setTextColor(GxEPD_BLACK);
+      }
+
+      display.setCursor(MARGIN_X + 4, y);
+      display.print(decks.deckNameAt(idx));
+
+      char suffix[16];
+      snprintf(suffix, sizeof(suffix), " (%u)", static_cast<unsigned>(decks.cardCountAt(idx)));
+      display.print(suffix);
+    }
+
+    display.setTextColor(GxEPD_BLACK);
+  } while (display.nextPage());
+}
+
+void confirmDeckPicker()
+{
+  appMode = AppMode::Normal;
+
+  if (pickerIndex != decks.currentDeckIndex())
+  {
+    invalidateCoverCache();
+    decks.selectDeck(pickerIndex);
+    Serial.printf("Deck selected: %s (%u/%u, %u cards)\n",
+                  decks.currentDeckName(),
+                  static_cast<unsigned>(decks.currentDeckIndex() + 1),
+                  static_cast<unsigned>(decks.deckCount()),
+                  static_cast<unsigned>(decks.cardCount()));
+    showCover();
+    return;
+  }
+
+  Serial.printf("Deck unchanged: %s\n", decks.currentDeckName());
+  showCover();
+}
+
+void cancelDeckPicker()
+{
+  appMode = AppMode::Normal;
+  pickerIndex = decks.currentDeckIndex();
+  showCover();
+}
+
+void moveDeckPicker(bool next)
+{
+  const size_t deckCount = decks.deckCount();
+  if (deckCount == 0)
   {
     showMessage("No decks on SD", "Create /name/cover.bmp");
     return;
   }
 
-  invalidateCoverCache();
+  if (deckCount == 1)
+  {
+    showCover();
+    return;
+  }
 
   if (next)
   {
-    decks.nextDeck();
+    pickerIndex = (pickerIndex + 1) % deckCount;
+  }
+  else if (pickerIndex == 0)
+  {
+    pickerIndex = deckCount - 1;
   }
   else
   {
-    decks.previousDeck();
+    pickerIndex--;
   }
 
-  Serial.printf("Deck: %s (%u/%u, %u cards)\n",
-                decks.currentDeckName(),
-                static_cast<unsigned>(decks.currentDeckIndex() + 1),
-                static_cast<unsigned>(decks.deckCount()),
-                static_cast<unsigned>(decks.cardCount()));
-  showCover();
+  pickerMovedAt = millis();
+  showDeckPicker(pickerIndex);
+}
+
+void openDeckPicker(bool next)
+{
+  const size_t deckCount = decks.deckCount();
+  if (deckCount == 0)
+  {
+    showMessage("No decks on SD", "Create /name/cover.bmp");
+    return;
+  }
+
+  if (deckCount == 1)
+  {
+    showCover();
+    return;
+  }
+
+  appMode = AppMode::DeckPicker;
+  pickerIndex = decks.currentDeckIndex();
+  moveDeckPicker(next);
+}
+
+bool deckPickerDwellElapsed()
+{
+  return appMode == AppMode::DeckPicker &&
+         (millis() - pickerMovedAt) >= DECK_PICKER_DWELL_MS;
 }
 } // namespace
 
@@ -218,7 +358,66 @@ void setup()
 
 void loop()
 {
+  if (deckPickerDwellElapsed())
+  {
+    confirmDeckPicker();
+    delay(80);
+    return;
+  }
+
   const Button pressed = buttons.poll();
+
+  if (appMode == AppMode::DeckPicker)
+  {
+    if (pressed == BTN_NONE)
+    {
+      delay(20);
+      return;
+    }
+
+    Serial.printf("Picker button: %s\n", buttons.name(pressed));
+
+    switch (pressed)
+    {
+    case BTN_UP:
+      moveDeckPicker(false);
+      break;
+    case BTN_DOWN:
+      moveDeckPicker(true);
+      break;
+    case BTN_BACK:
+      cancelDeckPicker();
+      break;
+    case BTN_CONFIRM:
+      cancelDeckPicker();
+      drawThreeRandomCards();
+      break;
+    case BTN_LEFT:
+    case BTN_RIGHT:
+      cancelDeckPicker();
+      drawRandomCard();
+      break;
+    case BTN_POWER:
+    {
+      const unsigned long start = millis();
+      while (digitalRead(PIN_POWER) == LOW)
+      {
+        delay(50);
+      }
+      if (millis() - start > POWER_SLEEP_MS)
+      {
+        enterDeepSleep();
+      }
+      break;
+    }
+    default:
+      break;
+    }
+
+    delay(80);
+    return;
+  }
+
   if (pressed == BTN_NONE)
   {
     delay(20);
@@ -240,10 +439,10 @@ void loop()
     drawRandomCard();
     break;
   case BTN_UP:
-    handleDeckChange(false);
+    openDeckPicker(false);
     break;
   case BTN_DOWN:
-    handleDeckChange(true);
+    openDeckPicker(true);
     break;
   case BTN_POWER:
   {

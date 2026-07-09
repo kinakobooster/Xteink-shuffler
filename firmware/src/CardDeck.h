@@ -20,6 +20,8 @@ public:
   size_t deckCount() const { return deckNames_.size(); }
   size_t currentDeckIndex() const { return currentDeck_; }
   const char *currentDeckName() const;
+  const char *deckNameAt(size_t index) const;
+  size_t cardCountAt(size_t index) const;
   bool selectDeck(size_t index);
   bool nextDeck();
   bool previousDeck();
