@@ -402,13 +402,11 @@ bool drawBitmapScaledToSlot(ShufflerDisplay &display,
                             int16_t slotGx,
                             int16_t slotGy,
                             int16_t slotW,
-                            int16_t slotH,
-                            bool flipVertical)
+                            int16_t slotH)
 {
   for (int16_t dy = 0; dy < slotH; dy++)
   {
-    const int16_t sampleDy = flipVertical ? static_cast<int16_t>(slotH - 1 - dy) : dy;
-    const uint16_t srcY = static_cast<uint16_t>((static_cast<int32_t>(sampleDy) * info.height) / slotH);
+    const uint16_t srcY = static_cast<uint16_t>((static_cast<int32_t>(dy) * info.height) / slotH);
     if (!readBmpRowBits(file, info, srcY, rowBlack))
     {
       return false;
@@ -431,8 +429,7 @@ bool drawBitmapScaledFromSD(ShufflerDisplay &display,
                             int16_t slotW,
                             int16_t slotH,
                             int16_t expectedW,
-                            int16_t expectedH,
-                            bool flipVertical)
+                            int16_t expectedH)
 {
   File file = SD.open(path, FILE_READ);
   if (!file)
@@ -456,7 +453,7 @@ bool drawBitmapScaledFromSD(ShufflerDisplay &display,
     return false;
   }
 
-  const bool ok = drawBitmapScaledToSlot(display, file, info, slotGx, slotGy, slotW, slotH, flipVertical);
+  const bool ok = drawBitmapScaledToSlot(display, file, info, slotGx, slotGy, slotW, slotH);
   file.close();
   return ok;
 }
@@ -475,8 +472,7 @@ bool drawCachedCover(ShufflerDisplay &display, const char *path)
 bool drawBitmapFromSD(ShufflerDisplay &display,
                       const char *path,
                       bool preferPartial,
-                      bool cacheCover,
-                      bool flipVertical)
+                      bool cacheCover)
 {
   clearPhysicalRows();
 
@@ -488,15 +484,14 @@ bool drawBitmapFromSD(ShufflerDisplay &display,
   const int16_t fitX = (screenW - fitW) / 2;
   const int16_t fitY = (screenH - fitH) / 2;
 
-  const bool ok = drawBitmapScaledFromSD(display, path, fitX, fitY, fitW, fitH, screenW, screenH, flipVertical);
+  const bool ok = drawBitmapScaledFromSD(display, path, fitX, fitY, fitW, fitH, screenW, screenH);
   if (!ok)
   {
     return false;
   }
 
   const bool useFullUpdate = resolveFullRefresh(preferPartial);
-  Serial.printf("BMP full: %s (%s%s)\n", path, useFullUpdate ? "full" : "partial",
-                flipVertical ? ", inverted" : "");
+  Serial.printf("BMP full: %s (%s)\n", path, useFullUpdate ? "full" : "partial");
   flushPhysicalDisplay(display, useFullUpdate);
 
   if (cacheCover)
@@ -507,10 +502,7 @@ bool drawBitmapFromSD(ShufflerDisplay &display,
   return true;
 }
 
-bool drawThreeBitmapsFromSD(ShufflerDisplay &display,
-                            const char *paths[3],
-                            bool preferPartial,
-                            const bool flipVertical[3])
+bool drawThreeBitmapsFromSD(ShufflerDisplay &display, const char *paths[3], bool preferPartial)
 {
   const int16_t screenW = display.width();
   const int16_t screenH = display.height();
@@ -521,9 +513,8 @@ bool drawThreeBitmapsFromSD(ShufflerDisplay &display,
 
   for (int i = 0; i < 3; i++)
   {
-    const bool flip = flipVertical ? flipVertical[i] : false;
     if (!drawBitmapScaledFromSD(display, paths[i], slots[i].x, slots[i].y, slots[i].w, slots[i].h,
-                                screenW, screenH, flip))
+                                screenW, screenH))
     {
       Serial.printf("Triple draw failed at slot %d: %s\n", i, paths[i]);
       return false;
@@ -531,11 +522,8 @@ bool drawThreeBitmapsFromSD(ShufflerDisplay &display,
   }
 
   const bool useFullUpdate = resolveFullRefresh(preferPartial);
-  Serial.printf("BMP triple (%s): %s%s | %s%s | %s%s\n",
-                useFullUpdate ? "full" : "partial",
-                paths[0], flipVertical && flipVertical[0] ? "*" : "",
-                paths[1], flipVertical && flipVertical[1] ? "*" : "",
-                paths[2], flipVertical && flipVertical[2] ? "*" : "");
+  Serial.printf("BMP triple (%s): %s | %s | %s\n",
+                useFullUpdate ? "full" : "partial", paths[0], paths[1], paths[2]);
   flushPhysicalDisplay(display, useFullUpdate);
   return true;
 }
