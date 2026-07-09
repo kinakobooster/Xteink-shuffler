@@ -4,7 +4,7 @@
 #include <SD.h>
 #include <esp_sleep.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
-#include <Fonts/FreeMono9pt7b.h>
+#include <Fonts/FreeMono12pt7b.h>
 
 #include "BmpSdDraw.h"
 #include "ButtonInput.h"
@@ -135,7 +135,7 @@ void drawRandomCard()
     showMessage("No cards in deck", detail);
     return;
   }
-  showImage(imagePath, true);
+  showImage(imagePath, false);
 }
 
 void drawThreeRandomCards()
@@ -152,7 +152,7 @@ void drawThreeRandomCards()
   }
 
   const char *ptrs[3] = {paths[0], paths[1], paths[2]};
-  if (!drawThreeBitmapsFromSD(display, ptrs, true))
+  if (!drawThreeBitmapsFromSD(display, ptrs, false))
   {
     showMessage("Failed to draw 3", paths[0]);
   }
@@ -202,12 +202,12 @@ void showDeckPicker(size_t highlightIndex)
     return;
   }
 
-  constexpr int16_t LINE_H = 28;
+  constexpr int16_t LINE_H = 32;
   constexpr int16_t MARGIN_X = 16;
   constexpr int16_t PANEL_X = 8;
-  constexpr int16_t TITLE_Y = 36;
-  constexpr int16_t LIST_Y = 64;
-  constexpr int16_t FOOTER_Y_OFFSET = 28;
+  constexpr int16_t TITLE_Y = 40;
+  constexpr int16_t LIST_Y = 72;
+  constexpr int16_t FOOTER_Y_OFFSET = 32;
 
   const int16_t screenW = display.width();
   const int16_t screenH = display.height();
@@ -237,7 +237,7 @@ void showDeckPicker(size_t highlightIndex)
   {
     display.fillScreen(GxEPD_WHITE);
     display.drawRect(PANEL_X, 12, panelW, panelH, GxEPD_BLACK);
-    display.setFont(&FreeMono9pt7b);
+    display.setFont(&FreeMono12pt7b);
     display.setTextColor(GxEPD_BLACK);
     display.setCursor(MARGIN_X, TITLE_Y);
     display.print("Deck ");
@@ -256,7 +256,7 @@ void showDeckPicker(size_t highlightIndex)
 
       if (selected)
       {
-        display.fillRect(MARGIN_X - 4, y - 18, panelW - 16, LINE_H - 2, GxEPD_BLACK);
+        display.fillRect(MARGIN_X - 4, y - 22, panelW - 16, LINE_H - 2, GxEPD_BLACK);
         display.setTextColor(GxEPD_WHITE);
         display.setCursor(MARGIN_X, y);
         display.print("> ");
