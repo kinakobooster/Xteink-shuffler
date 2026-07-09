@@ -25,8 +25,9 @@ bool isCoverName(const char *name)
 {
   return name && strcasecmp(name, "cover.bmp") == 0;
 }
+} // namespace
 
-bool isIgnoredDeckName(const char *name)
+bool CardDeckManager::isIgnoredDeckName(const char *name) const
 {
   if (!name || name[0] == '\0')
   {
@@ -57,7 +58,6 @@ bool isIgnoredDeckName(const char *name)
 
   return false;
 }
-} // namespace
 
 bool CardDeckManager::isCardFile(const char *name) const
 {
@@ -98,15 +98,12 @@ bool CardDeckManager::isCardFile(const char *name) const
   return true;
 }
 
-bool CardDeckManager::inspectDeckFolder(const char *deckPath, bool *hasCover, size_t *cardCount) const
+bool CardDeckManager::loadCardsFromFolder(const char *deckPath, std::vector<String> &cards, bool *hasCover) const
 {
+  cards.clear();
   if (hasCover)
   {
     *hasCover = false;
-  }
-  if (cardCount)
-  {
-    *cardCount = 0;
   }
 
   File dir = SD.open(deckPath);
@@ -137,9 +134,11 @@ bool CardDeckManager::inspectDeckFolder(const char *deckPath, bool *hasCover, si
     }
     else if (isCardFile(base))
     {
-      if (cardCount)
+      cards.push_back(String(base));
+      if (cards.size() >= MAX_CARDS)
       {
-        (*cardCount)++;
+        entry.close();
+        break;
       }
     }
 
@@ -147,61 +146,28 @@ bool CardDeckManager::inspectDeckFolder(const char *deckPath, bool *hasCover, si
   }
 
   dir.close();
+
+  std::sort(cards.begin(), cards.end(),
+            [](const String &a, const String &b) { return a.compareTo(b) < 0; });
   return true;
 }
 
-bool CardDeckManager::loadCardsForCurrentDeck()
+void CardDeckManager::applyCurrentDeck()
 {
-  cardFiles_.clear();
-
-  if (deckNames_.empty())
+  if (currentDeck_ < deckCards_.size())
   {
-    return false;
+    cardFiles_ = deckCards_[currentDeck_];
   }
-
-  const String deckPath = "/" + deckNames_[currentDeck_];
-  File dir = SD.open(deckPath.c_str());
-  if (!dir || !dir.isDirectory())
+  else
   {
-    Serial.printf("Deck open failed: %s\n", deckPath.c_str());
-    if (dir)
-    {
-      dir.close();
-    }
-    return false;
+    cardFiles_.clear();
   }
-
-  for (File entry = dir.openNextFile(); entry; entry = dir.openNextFile())
-  {
-    if (!entry.isDirectory())
-    {
-      const char *base = basenameOf(entry.name());
-      Serial.printf("  file: %s\n", base);
-      if (isCardFile(base))
-      {
-        cardFiles_.push_back(String(base));
-      }
-    }
-    entry.close();
-
-    if (cardFiles_.size() >= MAX_CARDS)
-    {
-      break;
-    }
-  }
-  dir.close();
-
-  std::sort(cardFiles_.begin(), cardFiles_.end(),
-            [](const String &a, const String &b) { return a.compareTo(b) < 0; });
-
-  Serial.printf("Deck %s: %u card(s)\n", deckNames_[currentDeck_].c_str(),
-                static_cast<unsigned>(cardFiles_.size()));
-  return true;
 }
 
 bool CardDeckManager::scan()
 {
   deckNames_.clear();
+  deckCards_.clear();
   cardFiles_.clear();
   currentDeck_ = 0;
 
@@ -226,7 +192,6 @@ bool CardDeckManager::scan()
     const char *base = basenameOf(entry.name());
     if (isIgnoredDeckName(base))
     {
-      Serial.printf("Skip folder: %s\n", base);
       entry.close();
       continue;
     }
@@ -235,17 +200,23 @@ bool CardDeckManager::scan()
     snprintf(deckPath, sizeof(deckPath), "/%s", base);
 
     bool hasCover = false;
-    size_t cardCount = 0;
-    if (inspectDeckFolder(deckPath, &hasCover, &cardCount) && (hasCover || cardCount > 0))
+    std::vector<String> cards;
+    if (!loadCardsFromFolder(deckPath, cards, &hasCover))
     {
-      deckNames_.push_back(String(base));
-      Serial.printf("Deck found: %s (cover=%d cards=%u)\n", base, hasCover,
-                    static_cast<unsigned>(cardCount));
+      entry.close();
+      continue;
     }
-    else
+
+    if (!hasCover && cards.empty())
     {
-      Serial.printf("Skip empty folder: %s\n", base);
+      entry.close();
+      continue;
     }
+
+    deckNames_.push_back(String(base));
+    deckCards_.push_back(cards);
+    Serial.printf("Deck cached: %s (cover=%d cards=%u)\n", base, hasCover,
+                  static_cast<unsigned>(cards.size()));
 
     entry.close();
   }
@@ -257,6 +228,11 @@ bool CardDeckManager::scan()
   if (deckNames_.size() > MAX_DECKS)
   {
     deckNames_.resize(MAX_DECKS);
+    deckCards_.resize(MAX_DECKS);
+  }
+  else if (deckCards_.size() > deckNames_.size())
+  {
+    deckCards_.resize(deckNames_.size());
   }
 
   if (deckNames_.empty())
@@ -267,7 +243,7 @@ bool CardDeckManager::scan()
   for (size_t i = 0; i < deckNames_.size(); i++)
   {
     currentDeck_ = i;
-    loadCardsForCurrentDeck();
+    applyCurrentDeck();
     if (!cardFiles_.empty())
     {
       return true;
@@ -275,7 +251,7 @@ bool CardDeckManager::scan()
   }
 
   currentDeck_ = 0;
-  loadCardsForCurrentDeck();
+  applyCurrentDeck();
   return true;
 }
 
@@ -295,7 +271,8 @@ bool CardDeckManager::selectDeck(size_t index)
     return false;
   }
   currentDeck_ = index;
-  return loadCardsForCurrentDeck();
+  applyCurrentDeck();
+  return true;
 }
 
 bool CardDeckManager::nextDeck()
@@ -305,7 +282,8 @@ bool CardDeckManager::nextDeck()
     return false;
   }
   currentDeck_ = (currentDeck_ + 1) % deckNames_.size();
-  return loadCardsForCurrentDeck();
+  applyCurrentDeck();
+  return true;
 }
 
 bool CardDeckManager::previousDeck()
@@ -322,7 +300,8 @@ bool CardDeckManager::previousDeck()
   {
     currentDeck_--;
   }
-  return loadCardsForCurrentDeck();
+  applyCurrentDeck();
+  return true;
 }
 
 bool CardDeckManager::hasCover() const

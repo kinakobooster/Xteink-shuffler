@@ -34,10 +34,12 @@ public:
 
 private:
   bool isCardFile(const char *name) const;
-  bool inspectDeckFolder(const char *deckPath, bool *hasCover, size_t *cardCount) const;
-  bool loadCardsForCurrentDeck();
+  bool isIgnoredDeckName(const char *name) const;
+  bool loadCardsFromFolder(const char *deckPath, std::vector<String> &cards, bool *hasCover) const;
+  void applyCurrentDeck();
 
   std::vector<String> deckNames_;
+  std::vector<std::vector<String>> deckCards_;
   std::vector<String> cardFiles_;
   size_t currentDeck_ = 0;
 };

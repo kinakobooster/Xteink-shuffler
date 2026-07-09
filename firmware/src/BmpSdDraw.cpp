@@ -19,6 +19,12 @@ uint8_t physicalRows[PHYS_HEIGHT][PHYS_ROW_BYTES];
 uint8_t colorRow[PHYS_ROW_BYTES];
 bool rowBlack[MAX_BMP_WIDTH];
 
+constexpr uint8_t PARTIAL_BEFORE_FULL = 8;
+uint8_t partialDrawCount = 0;
+bool coverCacheValid = false;
+char coverCachePath[128];
+uint8_t coverCacheRows[PHYS_HEIGHT][PHYS_ROW_BYTES];
+
 struct Rect
 {
   int16_t x;
@@ -151,14 +157,61 @@ void mapAndSetPixel(ShufflerDisplay &display, int16_t gx, int16_t gy, bool black
   setPhysicalPixel(px, py, black);
 }
 
-void flushPhysicalDisplay(ShufflerDisplay &display)
+void flushPhysicalDisplay(ShufflerDisplay &display, bool useFullUpdate)
 {
   display.writeScreenBuffer();
   for (uint16_t py = 0; py < PHYS_HEIGHT; py++)
   {
     display.writeImage(physicalRows[py], colorRow, 0, static_cast<int16_t>(py), PHYS_WIDTH, 1);
   }
-  display.refresh(false);
+  display.refresh(useFullUpdate ? false : true);
+}
+
+bool resolveFullRefresh(bool preferPartial)
+{
+  if (!preferPartial)
+  {
+    return true;
+  }
+
+  partialDrawCount++;
+  if (partialDrawCount >= PARTIAL_BEFORE_FULL)
+  {
+    partialDrawCount = 0;
+    return true;
+  }
+  return false;
+}
+
+void saveCoverCache(const char *path)
+{
+  if (!path)
+  {
+    return;
+  }
+  strncpy(coverCachePath, path, sizeof(coverCachePath) - 1);
+  coverCachePath[sizeof(coverCachePath) - 1] = '\0';
+  memcpy(coverCacheRows, physicalRows, sizeof(coverCacheRows));
+  coverCacheValid = true;
+}
+
+void invalidateCoverCacheInternal()
+{
+  coverCacheValid = false;
+  coverCachePath[0] = '\0';
+}
+
+bool drawCachedCoverInternal(ShufflerDisplay &display, const char *path)
+{
+  if (!coverCacheValid || !path || strcmp(path, coverCachePath) != 0)
+  {
+    return false;
+  }
+
+  memcpy(physicalRows, coverCacheRows, sizeof(physicalRows));
+  flushPhysicalDisplay(display, true);
+  Serial.printf("Cover cache hit: %s\n", path);
+  return true;
 }
 
 bool loadPalette(File &file, BmpInfo &info)
@@ -406,11 +459,21 @@ bool drawBitmapScaledFromSD(ShufflerDisplay &display,
 }
 } // namespace
 
-bool drawBitmapFromSD(ShufflerDisplay &display, const char *path, int16_t x, int16_t y)
+void invalidateCoverCache()
 {
-  (void)x;
-  (void)y;
+  invalidateCoverCacheInternal();
+}
 
+bool drawCachedCover(ShufflerDisplay &display, const char *path)
+{
+  return drawCachedCoverInternal(display, path);
+}
+
+bool drawBitmapFromSD(ShufflerDisplay &display,
+                      const char *path,
+                      bool preferPartial,
+                      bool cacheCover)
+{
   clearPhysicalRows();
 
   const int16_t screenW = display.width();
@@ -427,12 +490,19 @@ bool drawBitmapFromSD(ShufflerDisplay &display, const char *path, int16_t x, int
     return false;
   }
 
-  Serial.printf("BMP full: %s\n", path);
-  flushPhysicalDisplay(display);
+  const bool useFullUpdate = resolveFullRefresh(preferPartial);
+  Serial.printf("BMP full: %s (%s)\n", path, useFullUpdate ? "full" : "partial");
+  flushPhysicalDisplay(display, useFullUpdate);
+
+  if (cacheCover)
+  {
+    saveCoverCache(path);
+  }
+
   return true;
 }
 
-bool drawThreeBitmapsFromSD(ShufflerDisplay &display, const char *paths[3])
+bool drawThreeBitmapsFromSD(ShufflerDisplay &display, const char *paths[3], bool preferPartial)
 {
   const int16_t screenW = display.width();
   const int16_t screenH = display.height();
@@ -451,7 +521,9 @@ bool drawThreeBitmapsFromSD(ShufflerDisplay &display, const char *paths[3])
     }
   }
 
-  Serial.printf("BMP triple (triangle): %s | %s | %s\n", paths[0], paths[1], paths[2]);
-  flushPhysicalDisplay(display);
+  const bool useFullUpdate = resolveFullRefresh(preferPartial);
+  Serial.printf("BMP triple (%s): %s | %s | %s\n",
+                useFullUpdate ? "full" : "partial", paths[0], paths[1], paths[2]);
+  flushPhysicalDisplay(display, useFullUpdate);
   return true;
 }
