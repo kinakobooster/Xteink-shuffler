@@ -264,6 +264,24 @@ const char *CardDeckManager::currentDeckName() const
   return deckNames_[currentDeck_].c_str();
 }
 
+const char *CardDeckManager::deckNameAt(size_t index) const
+{
+  if (index >= deckNames_.size())
+  {
+    return "";
+  }
+  return deckNames_[index].c_str();
+}
+
+size_t CardDeckManager::cardCountAt(size_t index) const
+{
+  if (index >= deckCards_.size())
+  {
+    return 0;
+  }
+  return deckCards_[index].size();
+}
+
 bool CardDeckManager::selectDeck(size_t index)
 {
   if (index >= deckNames_.size())
