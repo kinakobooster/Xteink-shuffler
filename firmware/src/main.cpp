@@ -4,6 +4,7 @@
 #include <SD.h>
 #include <esp_sleep.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
+#include <Fonts/FreeMono9pt7b.h>
 
 #include "BmpSdDraw.h"
 #include "ButtonInput.h"
@@ -25,7 +26,6 @@ constexpr int SD_MISO = 7;
 
 constexpr int PIN_POWER = 3;
 constexpr unsigned long POWER_SLEEP_MS = 1000;
-constexpr unsigned long DECK_PICKER_DWELL_MS = 400;
 
 enum class AppMode : uint8_t
 {
@@ -35,7 +35,6 @@ enum class AppMode : uint8_t
 
 AppMode appMode = AppMode::Normal;
 size_t pickerIndex = 0;
-unsigned long pickerMovedAt = 0;
 
 GxEPD2_BW<GxEPD2_426_GDEQ0426T82, GxEPD2_426_GDEQ0426T82::HEIGHT> display(
     GxEPD2_426_GDEQ0426T82(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
@@ -94,15 +93,10 @@ void showMessage(const char *line1, const char *line2 = nullptr)
   } while (display.nextPage());
 }
 
-bool randomCardInverted()
+bool showImage(const char *path, bool preferPartial)
 {
-  return random(2) == 0;
-}
-
-bool showImage(const char *path, bool preferPartial, bool flipVertical = false)
-{
-  Serial.printf("Show: %s%s\n", path, flipVertical ? " (inverted)" : "");
-  if (drawBitmapFromSD(display, path, preferPartial, false, flipVertical))
+  Serial.printf("Show: %s\n", path);
+  if (drawBitmapFromSD(display, path, preferPartial, false))
   {
     return true;
   }
@@ -141,7 +135,7 @@ void drawRandomCard()
     showMessage("No cards in deck", detail);
     return;
   }
-  showImage(imagePath, true, randomCardInverted());
+  showImage(imagePath, true);
 }
 
 void drawThreeRandomCards()
@@ -158,10 +152,45 @@ void drawThreeRandomCards()
   }
 
   const char *ptrs[3] = {paths[0], paths[1], paths[2]};
-  const bool flips[3] = {randomCardInverted(), randomCardInverted(), randomCardInverted()};
-  if (!drawThreeBitmapsFromSD(display, ptrs, true, flips))
+  if (!drawThreeBitmapsFromSD(display, ptrs, true))
   {
     showMessage("Failed to draw 3", paths[0]);
+  }
+}
+
+void formatDeckLabel(char *out, size_t outLen, const char *name, int16_t maxWidth)
+{
+  if (!out || outLen == 0)
+  {
+    return;
+  }
+
+  snprintf(out, outLen, "%s", name ? name : "");
+  int16_t x1 = 0;
+  int16_t y1 = 0;
+  uint16_t w = 0;
+  uint16_t h = 0;
+
+  while (out[0] != '\0')
+  {
+    display.getTextBounds(out, 0, 0, &x1, &y1, &w, &h);
+    if (w <= maxWidth)
+    {
+      return;
+    }
+
+    const size_t len = strlen(out);
+    if (len <= 4)
+    {
+      out[0] = '\0';
+      return;
+    }
+
+    out[len - 1] = '\0';
+    if (strcmp(out + strlen(out) - 3, "...") != 0)
+    {
+      strlcat(out, "...", outLen);
+    }
   }
 }
 
@@ -173,65 +202,77 @@ void showDeckPicker(size_t highlightIndex)
     return;
   }
 
-  constexpr int16_t LINE_H = 38;
-  constexpr size_t VISIBLE_LINES = 7;
-  constexpr int16_t MARGIN_X = 20;
-  constexpr int16_t PANEL_X = 12;
-  constexpr int16_t TITLE_Y = 56;
-  constexpr int16_t LIST_Y = 96;
+  constexpr int16_t LINE_H = 28;
+  constexpr int16_t MARGIN_X = 16;
+  constexpr int16_t PANEL_X = 8;
+  constexpr int16_t TITLE_Y = 36;
+  constexpr int16_t LIST_Y = 64;
+  constexpr int16_t FOOTER_Y_OFFSET = 28;
+
+  const int16_t screenW = display.width();
+  const int16_t screenH = display.height();
+  const int16_t textMaxW = screenW - 2 * MARGIN_X - 16;
+  const size_t visibleLines = (screenH - LIST_Y - FOOTER_Y_OFFSET) / LINE_H;
+  const size_t maxVisible = visibleLines > 0 ? visibleLines : 1;
 
   size_t scrollStart = 0;
-  if (deckCount > VISIBLE_LINES)
+  if (deckCount > maxVisible)
   {
-    if (highlightIndex >= VISIBLE_LINES / 2)
+    if (highlightIndex >= maxVisible / 2)
     {
-      scrollStart = highlightIndex - (VISIBLE_LINES / 2);
+      scrollStart = highlightIndex - (maxVisible / 2);
     }
-    if (scrollStart + VISIBLE_LINES > deckCount)
+    if (scrollStart + maxVisible > deckCount)
     {
-      scrollStart = deckCount - VISIBLE_LINES;
+      scrollStart = deckCount - maxVisible;
     }
   }
 
-  const int16_t panelW = display.width() - 2 * PANEL_X;
-  const int16_t panelH = static_cast<int16_t>(LIST_Y - 20 + VISIBLE_LINES * LINE_H + 16);
+  const int16_t panelW = screenW - 2 * PANEL_X;
+  const int16_t panelH = static_cast<int16_t>(screenH - 24);
 
   display.setFullWindow();
   display.firstPage();
   do
   {
     display.fillScreen(GxEPD_WHITE);
-    display.drawRect(PANEL_X, 16, panelW, panelH, GxEPD_BLACK);
-    display.setFont(&FreeMonoBold12pt7b);
+    display.drawRect(PANEL_X, 12, panelW, panelH, GxEPD_BLACK);
+    display.setFont(&FreeMono9pt7b);
     display.setTextColor(GxEPD_BLACK);
     display.setCursor(MARGIN_X, TITLE_Y);
-    display.print("Deck");
+    display.print("Deck ");
+    display.print(static_cast<unsigned>(highlightIndex + 1));
+    display.print("/");
+    display.print(static_cast<unsigned>(deckCount));
 
-    for (size_t row = 0; row < VISIBLE_LINES && scrollStart + row < deckCount; row++)
+    char label[CardDeckManager::PATH_LEN];
+    for (size_t row = 0; row < maxVisible && scrollStart + row < deckCount; row++)
     {
       const size_t idx = scrollStart + row;
       const int16_t y = static_cast<int16_t>(LIST_Y + row * LINE_H);
       const bool selected = idx == highlightIndex;
 
+      formatDeckLabel(label, sizeof(label), decks.deckNameAt(idx), textMaxW);
+
       if (selected)
       {
-        display.fillRect(MARGIN_X - 4, y - 28, panelW - 16, LINE_H - 4, GxEPD_BLACK);
+        display.fillRect(MARGIN_X - 4, y - 18, panelW - 16, LINE_H - 2, GxEPD_BLACK);
         display.setTextColor(GxEPD_WHITE);
+        display.setCursor(MARGIN_X, y);
+        display.print("> ");
+        display.print(label);
       }
       else
       {
         display.setTextColor(GxEPD_BLACK);
+        display.setCursor(MARGIN_X + 14, y);
+        display.print(label);
       }
-
-      display.setCursor(MARGIN_X + 4, y);
-      display.print(decks.deckNameAt(idx));
-
-      char suffix[16];
-      snprintf(suffix, sizeof(suffix), " (%u)", static_cast<unsigned>(decks.cardCountAt(idx)));
-      display.print(suffix);
     }
 
     display.setTextColor(GxEPD_BLACK);
+    display.setCursor(MARGIN_X, screenH - FOOTER_Y_OFFSET);
+    display.print("OK=select  Back=cancel");
   } while (display.nextPage());
 }
 
@@ -291,11 +332,10 @@ void moveDeckPicker(bool next)
     pickerIndex--;
   }
 
-  pickerMovedAt = millis();
   showDeckPicker(pickerIndex);
 }
 
-void openDeckPicker(bool next)
+void openDeckPicker()
 {
   const size_t deckCount = decks.deckCount();
   if (deckCount == 0)
@@ -312,13 +352,7 @@ void openDeckPicker(bool next)
 
   appMode = AppMode::DeckPicker;
   pickerIndex = decks.currentDeckIndex();
-  moveDeckPicker(next);
-}
-
-bool deckPickerDwellElapsed()
-{
-  return appMode == AppMode::DeckPicker &&
-         (millis() - pickerMovedAt) >= DECK_PICKER_DWELL_MS;
+  showDeckPicker(pickerIndex);
 }
 } // namespace
 
@@ -364,13 +398,6 @@ void setup()
 
 void loop()
 {
-  if (deckPickerDwellElapsed())
-  {
-    confirmDeckPicker();
-    delay(80);
-    return;
-  }
-
   const Button pressed = buttons.poll();
 
   if (appMode == AppMode::DeckPicker)
@@ -395,8 +422,7 @@ void loop()
       cancelDeckPicker();
       break;
     case BTN_CONFIRM:
-      cancelDeckPicker();
-      drawThreeRandomCards();
+      confirmDeckPicker();
       break;
     case BTN_LEFT:
     case BTN_RIGHT:
@@ -445,10 +471,8 @@ void loop()
     drawRandomCard();
     break;
   case BTN_UP:
-    openDeckPicker(false);
-    break;
   case BTN_DOWN:
-    openDeckPicker(true);
+    openDeckPicker();
     break;
   case BTN_POWER:
   {
