@@ -83,10 +83,10 @@ void showMessage(const char *line1, const char *line2 = nullptr)
   } while (display.nextPage());
 }
 
-bool showImage(const char *path)
+bool showImage(const char *path, bool preferPartial)
 {
   Serial.printf("Show: %s\n", path);
-  if (drawBitmapFromSD(display, path))
+  if (drawBitmapFromSD(display, path, preferPartial, false))
   {
     return true;
   }
@@ -102,7 +102,16 @@ void showCover()
     showMessage("No deck selected");
     return;
   }
-  showImage(imagePath);
+
+  if (drawCachedCover(display, imagePath))
+  {
+    return;
+  }
+
+  if (!drawBitmapFromSD(display, imagePath, false, true))
+  {
+    showMessage("Image not found", imagePath);
+  }
 }
 
 void drawRandomCard()
@@ -116,7 +125,7 @@ void drawRandomCard()
     showMessage("No cards in deck", detail);
     return;
   }
-  showImage(imagePath);
+  showImage(imagePath, true);
 }
 
 void drawThreeRandomCards()
@@ -133,22 +142,10 @@ void drawThreeRandomCards()
   }
 
   const char *ptrs[3] = {paths[0], paths[1], paths[2]};
-  if (!drawThreeBitmapsFromSD(display, ptrs))
+  if (!drawThreeBitmapsFromSD(display, ptrs, true))
   {
     showMessage("Failed to draw 3", paths[0]);
   }
-}
-
-void showDeckStatus()
-{
-  char line[CardDeckManager::PATH_LEN];
-  snprintf(line, sizeof(line), "Deck: %s (%u/%u, %u cards)",
-           decks.currentDeckName(),
-           static_cast<unsigned>(decks.currentDeckIndex() + 1),
-           static_cast<unsigned>(decks.deckCount()),
-           static_cast<unsigned>(decks.cardCount()));
-  showMessage(line, "Showing cover...");
-  showCover();
 }
 
 void handleDeckChange(bool next)
@@ -159,6 +156,8 @@ void handleDeckChange(bool next)
     return;
   }
 
+  invalidateCoverCache();
+
   if (next)
   {
     decks.nextDeck();
@@ -167,7 +166,13 @@ void handleDeckChange(bool next)
   {
     decks.previousDeck();
   }
-  showDeckStatus();
+
+  Serial.printf("Deck: %s (%u/%u, %u cards)\n",
+                decks.currentDeckName(),
+                static_cast<unsigned>(decks.currentDeckIndex() + 1),
+                static_cast<unsigned>(decks.deckCount()),
+                static_cast<unsigned>(decks.cardCount()));
+  showCover();
 }
 } // namespace
 
@@ -208,7 +213,7 @@ void setup()
                 static_cast<unsigned>(decks.deckCount()),
                 decks.currentDeckName(),
                 static_cast<unsigned>(decks.cardCount()));
-  showDeckStatus();
+  showCover();
 }
 
 void loop()

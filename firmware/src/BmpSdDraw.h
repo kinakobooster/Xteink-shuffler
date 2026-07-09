@@ -5,8 +5,18 @@
 
 using ShufflerDisplay = GxEPD2_BW<GxEPD2_426_GDEQ0426T82, GxEPD2_426_GDEQ0426T82::HEIGHT>;
 
-// Draw a full-screen card BMP from SD.
-bool drawBitmapFromSD(ShufflerDisplay &display, const char *path, int16_t x = 0, int16_t y = 0);
+// preferPartial: true = use partial refresh when possible (faster card draws).
+// cacheCover: store buffer for instant cover redraw (Back button).
+bool drawBitmapFromSD(ShufflerDisplay &display,
+                      const char *path,
+                      bool preferPartial = false,
+                      bool cacheCover = false);
 
-// Draw three card BMPs side-by-side (uses full screen width).
-bool drawThreeBitmapsFromSD(ShufflerDisplay &display, const char *paths[3]);
+// Draw three card BMPs in triangle layout.
+bool drawThreeBitmapsFromSD(ShufflerDisplay &display, const char *paths[3], bool preferPartial = false);
+
+// Show cached cover if path matches; returns false if cache miss.
+bool drawCachedCover(ShufflerDisplay &display, const char *path);
+
+// Clear cover cache (call on deck change).
+void invalidateCoverCache();
