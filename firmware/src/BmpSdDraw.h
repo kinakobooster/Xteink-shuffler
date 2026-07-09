@@ -10,10 +10,15 @@ using ShufflerDisplay = GxEPD2_BW<GxEPD2_426_GDEQ0426T82, GxEPD2_426_GDEQ0426T82
 bool drawBitmapFromSD(ShufflerDisplay &display,
                       const char *path,
                       bool preferPartial = false,
-                      bool cacheCover = false);
+                      bool cacheCover = false,
+                      bool flipVertical = false);
 
 // Draw three card BMPs in triangle layout.
-bool drawThreeBitmapsFromSD(ShufflerDisplay &display, const char *paths[3], bool preferPartial = false);
+// flipVertical[i] = true draws that card upside down (逆位置).
+bool drawThreeBitmapsFromSD(ShufflerDisplay &display,
+                            const char *paths[3],
+                            bool preferPartial = false,
+                            const bool flipVertical[3] = nullptr);
 
 // Show cached cover if path matches; returns false if cache miss.
 bool drawCachedCover(ShufflerDisplay &display, const char *path);
